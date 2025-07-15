@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DH-locações - Gerenciamento de Veículos</title>
+  <style>
+    body {
+      background-color: #000;
+      color: #f80;
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 15px;
+    }
+    label {
+      display: inline-block;
+      margin: 5px 10px 5px 0;
+    }
+    input, select, button {
+      margin: 5px 15px 5px 0;
+      padding: 5px 8px;
+      border-radius: 4px;
+      border: none;
+    }
+    input[type="date"] {
+      width: 140px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 20px;
+      color: #f80;
+    }
+    th, td {
+      border: 1px solid #f80;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background-color: #222;
+    }
+    tr:nth-child(even) {
+      background-color: #111;
+    }
+    .filters {
+      margin-bottom: 15px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      justify-content: center;
+    }
+    button {
+      background-color: #f80;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    button:hover {
+      background-color: #c60;
+    }
+    #msg {
+      margin-top: 10px;
+      color: #f80;
+      font-weight: bold;
+      text-align: center;
+    }
+    .manutencao-container {
+      margin-top: 30px;
+      border-top: 1px solid #f80;
+      padding-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>DH-locações - Gerenciamento de Veículos</h1>
+
+<form id="formAdd">
+  <label for="veiculo">Placa/Veículo:</label>
+  <input type="text" id="veiculo" name="veiculo" required placeholder="Ex: ABC1234 / Fusca" />
+
+  <label for="dataLocacao">Data Locação:</label>
+  <input type="date" id="dataLocacao" name="dataLocacao" required />
+
+  <label for="valorLocacao">Valor Locação (R$):</label>
+  <input type="number" id="valorLocacao" name="valorLocacao" min="0" step="0.01" required />
+
+  <label for="dataPagamento">Data Pagamento:</label>
+  <input type="date" id="dataPagamento" name="dataPagamento" />
+
+  <label for="statusPagamento">Status Pagamento:</label>
+  <select id="statusPagamento" name="statusPagamento" required>
+    <option value="pendente">Pendente</option>
+    <option value="pago">Pago</option>
+  </select>
+
+  <button type="submit">Adicionar Registro</button>
+</form>
+
+<div class="filters">
+  <label for="filterVeiculo">Filtrar por Veículo:</label>
+  <input type="text" id="filterVeiculo" placeholder="Digite placa ou veículo..." />
+
+  <label for="filterDataInicio">Data Início:</label>
+  <input type="date" id="filterDataInicio" />
+
+  <label for="filterDataFim">Data Fim:</label>
+  <input type="date" id="filterDataFim" />
+
+  <label for="filterStatusPagamento">Status Pagamento:</label>
+  <select id="filterStatusPagamento">
+    <option value="">Todos</option>
+    <option value="pago">Pago</option>
+    <option value="pendente">Pendente</option>
+  </select>
+
+  <button id="btnExportar">Exportar Relatório (CSV)</button>
+  <button id="btnBackup">Backup Manual</button>
+  <button id="btnClear">Limpar Todos</button>
+</div>
+
+<table id="tabelaRegistros">
+  <thead>
+    <tr>
+      <th>Placa/Veículo</th>
+      <th>Data Locação</th>
+      <th>Valor (R$)</th>
+      <th>Data Pagamento</th>
+      <th>Status</th>
+      <th>Ações</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<div class="manutencao-container">
+  <h2>Histórico de Manutenções</h2>
+  <form id="formManutencao">
+    <label>Placa/Veículo:</label>
+    <input type="text" id="manutVeiculo" required />
+
+    <label>Peça:</label>
+    <input type="text" id="manutPeca" required />
+
+    <label>Data Reposição:</label>
+    <input type="date" id="manutData" required />
+
+    <label>Valor Pago (R$):</label>
+    <input type="number" id="manutValor" step="0.01" min="0" required />
+
+    <button type="submit">Salvar Manutenção</button>
+    <button type="button" id="btnLimparManutencao">Limpar Manutenções</button>
+  </form>
+  <ul id="listaManutencao"></ul>
+</div>
+
+<div id="msg"></div>
+
+<script>
+// Declarações iniciais
+const STORAGE_KEY = "dh_locacoes_dados";
+const STORAGE_MANUT = "dh_locacoes_manutencao";
+let registros = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+let manutencoes = JSON.parse(localStorage.getItem(STORAGE_MANUT)) || [];
+
+const tabelaBody = document.querySelector("#tabelaRegistros tbody");
+const formAdd = document.getElementById("formAdd");
+const formManut = document.getElementById("formManutencao");
+const listaManut = document.getElementById("listaManutencao");
+const msgDiv = document.getElementById("msg");
+
+function salvarDados() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(registros));
+  localStorage.setItem(STORAGE_MANUT, JSON.stringify(manutencoes));
+}
+
+function aplicarFiltros() {
+  const filtro = document.getElementById("filterVeiculo").value.toLowerCase();
+  const inicio = document.getElementById("filterDataInicio").value;
+  const fim = document.getElementById("filterDataFim").value;
+  const status = document.getElementById("filterStatusPagamento").value;
+  const lista = registros.filter(r => {
+    if (filtro && !r.veiculo.toLowerCase().includes(filtro)) return false;
+    if (inicio && r.dataLocacao < inicio) return false;
+    if (fim && r.dataLocacao > fim) return false;
+    if (status && r.statusPagamento !== status) return false;
+    return true;
+  });
+  montarTabela(lista);
+}
+
+function montarTabela(lista) {
+  tabelaBody.innerHTML = "";
+  if (lista.length === 0) {
+    tabelaBody.innerHTML = '<tr><td colspan="6">Nenhum registro encontrado.</td></tr>';
+    return;
+  }
+  lista.forEach((r, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${r.veiculo}</td>
+      <td>${r.dataLocacao}</td>
+      <td>${parseFloat(r.valorLocacao).toFixed(2)}</td>
+      <td>${r.dataPagamento || "-"}</td>
+      <td>${r.statusPagamento}</td>
+      <td><button onclick="apagarRegistro(${i})">Apagar</button></td>
+    `;
+    tabelaBody.appendChild(tr);
+  });
+}
+
+function apagarRegistro(i) {
+  registros.splice(i, 1);
+  salvarDados();
+  aplicarFiltros();
+}
+
+document.getElementById("btnClear").onclick = () => {
+  if (confirm("Tem certeza que deseja apagar todos os registros?")) {
+    registros = [];
+    salvarDados();
+    aplicarFiltros();
+  }
+};
+
+formAdd.onsubmit = e => {
+  e.preventDefault();
+  const dados = Object.fromEntries(new FormData(formAdd).entries());
+  dados.valorLocacao = parseFloat(dados.valorLocacao).toFixed(2);
+  registros.push(dados);
+  salvarDados();
+  formAdd.reset();
+  aplicarFiltros();
+};
+
+formManut.onsubmit = e => {
+  e.preventDefault();
+  const peca = document.getElementById("manutPeca").value;
+  const veiculo = document.getElementById("manutVeiculo").value;
+  const data = document.getElementById("manutData").value;
+  const valor = parseFloat(document.getElementById("manutValor").value).toFixed(2);
+  manutencoes.push({ peca, veiculo, data, valor });
+  salvarDados();
+  formManut.reset();
+  listarManutencao();
+};
+
+function listarManutencao() {
+  listaManut.innerHTML = manutencoes.map(m => `<li>${m.data} - ${m.veiculo} - ${m.peca} - R$ ${m.valor}</li>`).join("");
+}
+
+document.getElementById("btnLimparManutencao").addEventListener("click", () => {
+  if (confirm("Deseja apagar todo o histórico de manutenção?")) {
+    manutencoes = [];
+    salvarDados();
+    listarManutencao();
+  }
+});
+
+["filterVeiculo", "filterDataInicio", "filterDataFim", "filterStatusPagamento"].forEach(id => {
+  document.getElementById(id).addEventListener("input", aplicarFiltros);
+});
+
+window.addEventListener("beforeunload", salvarDados);
+aplicarFiltros();
+listarManutencao();
+</script>
+
+</body>
+</html>
