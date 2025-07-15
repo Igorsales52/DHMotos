@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DH-locações - Gerenciamento de Veículos</title>
+<style>
+  body {
+    background-color: #000;
+    color: #f80;
+    font-family: Arial, sans-serif;
+    margin: 20px;
+  }
+  h1 {
+    text-align: center;
+    margin-bottom: 15px;
+  }
+  label {
+    display: inline-block;
+    margin: 5px 10px 5px 0;
+  }
+  input, select, button {
+    margin: 5px 15px 5px 0;
+    padding: 5px 8px;
+    border-radius: 4px;
+    border: none;
+  }
+  input[type="date"] {
+    width: 140px;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 20px;
+    color: #f80;
+  }
+  th, td {
+    border: 1px solid #f80;
+    padding: 8px;
+    text-align: center;
+  }
+  th {
+    background-color: #222;
+  }
+  tr:nth-child(even) {
+    background-color: #111;
+  }
+  .filters {
+    margin-bottom: 15px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    justify-content: center;
+  }
+  button {
+    background-color: #f80;
+    color: #000;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+  button:hover {
+    background-color: #c60;
+  }
+  #msg {
+    margin-top: 10px;
+    color: #f80;
+    font-weight: bold;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<h1>DH-locações - Gerenciamento de Veículos</h1>
+
+<form id="formAdd">
+  <label for="veiculo">Veículo:</label>
+  <input type="text" id="veiculo" name="veiculo" required placeholder="Ex: Fusca" />
+
+  <label for="dataLocacao">Data Locação:</label>
+  <input type="date" id="dataLocacao" name="dataLocacao" required />
+
+  <label for="valorLocacao">Valor Locação (R$):</label>
+  <input type="number" id="valorLocacao" name="valorLocacao" min="0" step="0.01" required />
+
+  <label for="dataPagamento">Data Pagamento:</label>
+  <input type="date" id="dataPagamento" name="dataPagamento" />
+
+  <label for="statusPagamento">Status Pagamento:</label>
+  <select id="statusPagamento" name="statusPagamento" required>
+    <option value="pendente">Pendente</option>
+    <option value="pago">Pago</option>
+  </select>
+
+  <button type="submit">Adicionar Registro</button>
+</form>
+
+<div class="filters">
+  <label for="filterVeiculo">Filtrar por Veículo:</label>
+  <input type="text" id="filterVeiculo" placeholder="Digite nome do veículo..." />
+
+  <label for="filterDataInicio">Data Início:</label>
+  <input type="date" id="filterDataInicio" />
+
+  <label for="filterDataFim">Data Fim:</label>
+  <input type="date" id="filterDataFim" />
+
+  <label for="filterStatusPagamento">Status Pagamento:</label>
+  <select id="filterStatusPagamento">
+    <option value="">Todos</option>
+    <option value="pago">Pago</option>
+    <option value="pendente">Pendente</option>
+  </select>
+
+  <button id="btnExportar">Exportar Relatório (CSV)</button>
+  <button id="btnBackup">Backup Manual (Salvar Dados)</button>
+</div>
+
+<table id="tabelaRegistros">
+  <thead>
+    <tr>
+      <th>Veículo</th>
+      <th>Data Locação</th>
+      <th>Valor Locação (R$)</th>
+      <th>Data Pagamento</th>
+      <th>Status Pagamento</th>
+    </tr>
+  </thead>
+  <tbody>
+    <!-- Dados preenchidos via JS -->
+  </tbody>
+</table>
+
+<div id="msg"></div>
+
+<script>
+  // Chave para armazenamento local
+  const STORAGE_KEY = "dh_locacoes_dados";
+
+  // Recuperar dados do localStorage ou iniciar vazio
+  let registros = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+
+  // Elementos do DOM
+  const formAdd = document.getElementById('formAdd');
+  const tabelaBody = document.querySelector('#tabelaRegistros tbody');
+  const filterVeiculo = document.getElementById('filterVeiculo');
+  const filterDataInicio = document.getElementById('filterDataInicio');
+  const filterDataFim = document.getElementById('filterDataFim');
+  const filterStatusPagamento = document.getElementById('filterStatusPagamento');
+  const btnExportar = document.getElementById('btnExportar');
+  const btnBackup = document.getElementById('btnBackup');
+  const msgDiv = document.getElementById('msg');
+
+  // Função para salvar no localStorage
+  function salvarDados() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(registros));
+    msgDiv.textContent = 'Dados salvos com sucesso.';
+    setTimeout(() => { msgDiv.textContent = ''; }, 3000);
+  }
+
+  // Função para adicionar um registro
+  formAdd.addEventListener('submit', e => {
+    e.preventDefault();
+
+    const veiculo = formAdd.veiculo.value.trim();
+    const dataLocacao = formAdd.dataLocacao.value;
+    const valorLocacao = parseFloat(formAdd.valorLocacao.value).toFixed(2);
+    const dataPagamento = formAdd.dataPagamento.value || '-';
+    const statusPagamento = formAdd.statusPagamento.value;
+
+    registros.push({ veiculo, dataLocacao, valorLocacao, dataPagamento, statusPagamento });
+    salvarDados();
+    formAdd.reset();
+    aplicarFiltros();
+  });
+
+  // Função para aplicar filtros e mostrar dados na tabela
+  function aplicarFiltros() {
+    const veiculoFiltro = filterVeiculo.value.toLowerCase();
+    const dataInicioFiltro = filterDataInicio.value;
+    const dataFimFiltro = filterDataFim.value;
+    const statusFiltro = filterStatusPagamento.value;
+
+    let filtrados = registros.filter(r => {
+      // Filtro veículo
+      if (veiculoFiltro && !r.veiculo.toLowerCase().includes(veiculoFiltro)) return false;
+
+      // Filtro data locação início
+      if (dataInicioFiltro && r.dataLocacao < dataInicioFiltro) return false;
+
+      // Filtro data locação fim
+      if (dataFimFiltro && r.dataLocacao > dataFimFiltro) return false;
+
+      // Filtro status
+      if (statusFiltro && r.statusPagamento !== statusFiltro) return false;
+
+      return true;
+    });
+
+    montarTabela(filtrados);
+  }
+
+  // Função para montar tabela
+  function montarTabela(lista) {
+    tabelaBody.innerHTML = '';
+    if(lista.length === 0){
+      tabelaBody.innerHTML = '<tr><td colspan="5">Nenhum registro encontrado.</td></tr>';
+      return;
+    }
+
+    for (const reg of lista) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${reg.veiculo}</td>
+        <td>${reg.dataLocacao}</td>
+        <td>${parseFloat(reg.valorLocacao).toFixed(2)}</td>
+        <td>${reg.dataPagamento === '-' ? '' : reg.dataPagamento}</td>
+        <td>${reg.statusPagamento.charAt(0).toUpperCase() + reg.statusPagamento.slice(1)}</td>
+      `;
+      tabelaBody.appendChild(tr);
+    }
+  }
+
+  // Exportar relatório CSV do filtro atual
+  btnExportar.addEventListener('click', () => {
+    const veiculoFiltro = filterVeiculo.value.toLowerCase();
+    const dataInicioFiltro = filterDataInicio.value;
+    const dataFimFiltro = filterDataFim.value;
+    const statusFiltro = filterStatusPagamento.value;
+
+    let exportados = registros.filter(r => {
+      if (veiculoFiltro && !r.veiculo.toLowerCase().includes(veiculoFiltro)) return false;
+      if (dataInicioFiltro && r.dataLocacao < dataInicioFiltro) return false;
+      if (dataFimFiltro && r.dataLocacao > dataFimFiltro) return false;
+      if (statusFiltro && r.statusPagamento !== statusFiltro) return false;
+      return true;
+    });
+
+    if (exportados.length === 0) {
+      alert('Nenhum registro para exportar com os filtros atuais.');
+      return;
+    }
+
+    let csv = 'Veículo,Data Locação,Valor Locação (R$),Data Pagamento,Status Pagamento\n';
+
+    exportados.forEach(r => {
+      csv += `"${r.veiculo}","${r.dataLocacao}","${r.valorLocacao}","${r.dataPagamento === '-' ? '' : r.dataPagamento}","${r.statusPagamento}"\n`;
+    });
+
+    const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `relatorio_dh_locacoes_${new Date().toISOString().slice(0,10)}.csv`;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
+
+  // Backup manual
+  btnBackup.addEventListener('click', () => {
+    salvarDados();
+  });
+
+  // Filtros escutam mudanças para atualizar tabela em tempo real
+  [filterVeiculo, filterDataInicio, filterDataFim, filterStatusPagamento].forEach(el => {
+    el.addEventListener('input', aplicarFiltros);
+  });
+
+  // Backup automático ao sair ou recarregar a página
+  window.addEventListener('beforeunload', salvarDados);
+
+  // Mostrar tabela ao carregar a página
+  aplicarFiltros();
+
+</script>
+
+</body>
+</html>
